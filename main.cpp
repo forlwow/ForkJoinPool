@@ -2,9 +2,6 @@
 #include "threadsafe_deque.hpp"
 #include <vector>
 #include <queue>
-#include <algorithm>
-#include <random>
-#include <thread>
 #include <chrono>
 #include "thread_pool.hpp"
 #include "parallel_func.hpp"
@@ -46,22 +43,25 @@ public:
 };
 
 int main(){
-    myclass test;
+    thread_pool p(10);
+    this_thread::sleep_for(chrono::seconds(1));
     auto t1 = chrono::high_resolution_clock::now();
-    thread_pool p(4);
-    auto res1 = p.submit(fun1);
-    auto res2 = p.submit(fun1);
-    auto res5 = p.submit(fun1);
-    auto res6 = p.submit(fun1);
-    auto res3 = p.submit(fun2);
-    auto res4 = p.submit(fun2);
-    auto res7 = p.submit(fun2);
-    auto res8 = p.submit(fun2);
-    while(!res1.valid() || !res2.valid() || !res3.valid() || !res4.valid());
-    res1.get(); res2.get(); res3.get(); res4.get();
+    vector<future<void>> res;
+    res.emplace_back(p.submit(fun1));
+    res.emplace_back(p.submit(fun1));
+    res.emplace_back(p.submit(fun1));
+    res.emplace_back(p.submit(fun1));
+    res.emplace_back(p.submit(fun2));
+    res.emplace_back(p.submit(fun2));
+    res.emplace_back(p.submit(fun2));
+    res.emplace_back(p.submit(fun2));
+    for(auto &tmp : res){
+        while(!tmp.valid());
+        tmp.get();
+    }
     auto t2 = chrono::high_resolution_clock::now();
     auto d1 = chrono::duration_cast<chrono::milliseconds>(t2 - t1).count();
-    cout << d1 << endl;
+    spdlog::info(d1);
     auto t3 = chrono::high_resolution_clock::now();
     fun1();
     fun1();
@@ -73,7 +73,7 @@ int main(){
     fun2();
     auto t4 = chrono::high_resolution_clock::now();
     auto d2 = chrono::duration_cast<chrono::milliseconds>(t4 - t3).count();
-    cout << d2 << endl;
+    spdlog::info(d2);
 }
 
 void fun1(){

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-PROJECT(STUDY VERSION 1.0.0)
+PROJECT(ForkJoinPool VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,6 +13,9 @@ SET(CMAKE_BUILD_TYPE "Debug") # Debug模式 选项: Release Debug MinSizeRel Rel
 set(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g -ggdb")
 set(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall")
 
+INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/Module/spdlog_debug/include)
+link_directories(${PROJECT_SOURCE_DIR}/Module/spdlog_debug/bin)
+
 file(GLOB src_files ${PROJECT_SOURCE_DIR}/*.cpp)
 file(GLOB inc_files ${PROJECT_SOURCE_DIR}/*.h)
 file(GLOB hpp_files ${PROJECT_SOURCE_DIR}/*.hpp)
@@ -24,3 +27,6 @@ add_executable(
         ${hpp_files}
 )
 
+target_link_libraries(${PROJECT_NAME} PUBLIC
+        spdlogd.dll
+)

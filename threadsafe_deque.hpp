@@ -30,7 +30,6 @@ private:
     mutable std::mutex tail_mutex;
 
     void resize_with_out_lock() noexcept {
-        std::cout << "resize" << std::endl;
         // 分配新内存
         auto old_true_head = true_head;
         auto new_size = max_size * 2;

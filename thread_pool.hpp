@@ -11,17 +11,16 @@
 
 #include "threadsafe_deque.hpp"
 #include <condition_variable>
-#include <iostream>
+#include "spdlog/spdlog.h"
 
 // 用于汇聚线程
 class join_threads{
     std::vector<std::thread> &threads;
     std::condition_variable &thread_blocker;
-    std::unique_lock<std::mutex> &condition;
 
 public:
-    explicit join_threads(std::vector<std::thread> &threads_, std::condition_variable& blocker, std::unique_lock<std::mutex> &l)
-    : threads(threads_), thread_blocker(blocker), condition(l) {}
+    explicit join_threads(std::vector<std::thread> &threads_, std::condition_variable& blocker)
+    : threads(threads_), thread_blocker(blocker) {}
 
     // 由于线程空闲时会阻塞 需要将其唤醒才能汇入
     ~join_threads(){
@@ -33,6 +32,26 @@ public:
         }
     }
 };
+
+class ethread{
+    std::thread t;
+    std::mutex wake;
+    std::unique_lock<std::mutex> unique_wake;
+
+    inline thread_local static
+
+public:
+    template<typename F, typename ...Args>
+    ehtread(F &&f, Args &&...args)
+        : t(std::forward<F>(f), std::forward<Args>(args)...),
+        wake(), unique_wake(wake) {}
+
+    void join() {t.join();}
+
+    bool joinable() {return t.joinable();}
+
+
+}
 
 class thread_pool{
     typedef std::function<void()> task_type;
@@ -46,23 +65,16 @@ class thread_pool{
     std::mutex condition_lock;  // 条件变量内的锁
     unique_lock condition; // 条件变量内的锁
 
-    unsigned handler_id;
-    std::vector<std::thread> threads;
-    std::vector<unsigned> work_ids;
-    threadsafe_deque<task_type> pool_work_que;
+    unsigned handler_id;  // 负责调度的线程的id
+    std::vector<std::thread> threads;   // 所有线程
+    std::vector<unsigned> work_ids; // 线程id列表
+    threadsafe_deque<task_type> pool_work_que;  // 公共任务队列
 
     std::vector<threadsafe_deque<task_type>> thread_work_deques;
     inline thread_local static threadsafe_deque<task_type> *thread_work_que= nullptr;
     inline thread_local static unsigned work_id=0;
 
     join_threads joiner;
-
-    static inline void log(unsigned id){
-        std::cout << "working on " << id << std::endl;
-    }
-    static inline void log(){
-        std::cout << "done" << std::endl;
-    }
 
     inline bool judge(){
         bool t = done.load() || !thread_work_que->empty();
@@ -77,15 +89,18 @@ class thread_pool{
         while(!done){
             task_type task;
             if(thread_work_que->pop_front(task)) {
-//                log(work_id);
+                spdlog::info("work on {}", work_id);
                 task();
-//                log();
+                spdlog::info("done work on {}", work_id);
             }
             else if(done){
                 continue;
             }
-            else
-                thread_blocker.wait(self_u, [this]{return judge();});
+            else {
+                spdlog::info("wait on {}", work_id);
+                thread_blocker.wait(self_u, [this] { return judge(); });
+                spdlog::info("thread {} wake", work_id);
+            }
         }
     }
 
@@ -94,20 +109,23 @@ class thread_pool{
         while(!done){
             task_type task;
             if(pool_work_que.pop_front(task)){
-                int index = -1;
+                unsigned index = MAXUINT;
                 int size = INT_MAX;
-                int v_size = thread_work_deques.size();
-                for (auto i = 1; i < v_size; ++i){
-                    if (int tmp = thread_work_deques[i].size() < size){
+                auto v_size = thread_work_deques.size();
+                for (unsigned i = 1; i < v_size; ++i){
+                    int tmp = thread_work_deques[i].size();
+                    if (tmp < size){
                         size = tmp;
                         index = i;
                     }
                 }
-                if(index != -1){
+                if(index != MAXUINT){
+                    spdlog::info("push task {}", index);
                     thread_work_deques[index].push_back(std::move(task));
                     thread_blocker.notify_all();
                 }
                 else{
+                    return;
                     std::this_thread::yield();
                 }
             }
@@ -117,11 +135,11 @@ class thread_pool{
 public:
     explicit thread_pool(unsigned min_size_ = 10):
             done(false),
-            max_size(std::thread::hardware_concurrency()), min_size(std::min(max_size.load(), min_size_)),
+            max_size(std::thread::hardware_concurrency()), min_size(std::min(max_size.load(), min_size_ + 1)),
             thread_blocker(),
             condition_lock(), condition(condition_lock),
             thread_work_deques(min_size),
-            joiner(threads, thread_blocker, condition){
+            joiner(threads, thread_blocker){
 
         handler_id = 0;
         threads.emplace_back(&thread_pool::thread_handler, this, handler_id);
