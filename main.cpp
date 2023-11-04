@@ -13,7 +13,7 @@ atomic_bool done= false;
 
 void fun1();
 void fun2();
-int fun3(int);
+void fun3();
 int fun4(int);
 void fun5();
 
@@ -42,7 +42,7 @@ public:
     }
 };
 
-int main(){
+void test1(){
     thread_pool p(10);
     this_thread::sleep_for(chrono::seconds(1));
     auto t1 = chrono::high_resolution_clock::now();
@@ -76,6 +76,41 @@ int main(){
     spdlog::info(d2);
 }
 
+void test2(){
+    vector<std::shared_ptr<ethread>> v;
+    for (int i=0;i<5;++i){
+        v.emplace_back(std::make_shared<ethread>(i));
+    }
+    for (auto &i : v) {
+        i->push_task(fun1);
+        i->push_task(fun2);
+        i->push_task(fun3);
+    }
+    auto tmp = [&](){
+        for (auto &i : v){
+            auto tt = i->task_num();
+        }
+    };
+
+    std::thread t1(tmp);
+    std::thread t2(tmp);
+    std::thread t3(tmp);
+    t1.join();
+    t2.join();
+    t3.join();
+
+}
+
+void test3(){
+    thread_pool p(3);
+    auto i = p.submit(fun4, 1);
+    spdlog::info(i.get());
+}
+
+int main(){
+    test1();
+}
+
 void fun1(){
     for (int i = 0; i < vsize/2; ++i) {
 //        a.push_front(v1[i]);
@@ -90,11 +125,11 @@ void fun2(){
     }
 }
 
-int fun3(int j){
+void fun3(){
     for (int i = 0; i < vsize*10; ++i) {
-        a.pop_back(j);
+//        a.pop_back(j);
+        a.size();
     }
-    return 0;
 }
 
 int fun4(int j){

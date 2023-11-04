@@ -1,0 +1,11 @@
+prefix=D:/OneDrive/OneDrive - MSFT/cpp_lib/Complie_file
+exec_prefix=D:/OneDrive/OneDrive - MSFT/cpp_lib/Complie_file
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: fmt
+Description: A modern formatting library
+Version: 10.1.1
+Libs: -L${libdir} -lfmtd
+Cflags: -I${includedir}
+

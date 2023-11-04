@@ -8,152 +8,167 @@
 #include <future>
 #include <functional>
 #include <deque>
+#include <semaphore>
+#include <numeric>
 
 #include "threadsafe_deque.hpp"
 #include <condition_variable>
 #include "spdlog/spdlog.h"
 
-// 用于汇聚线程
-class join_threads{
-    std::vector<std::thread> &threads;
-    std::condition_variable &thread_blocker;
-
-public:
-    explicit join_threads(std::vector<std::thread> &threads_, std::condition_variable& blocker)
-    : threads(threads_), thread_blocker(blocker) {}
-
-    // 由于线程空闲时会阻塞 需要将其唤醒才能汇入
-    ~join_threads(){
-        for(auto & thread : threads){
-            if (thread.joinable()) {
-                thread_blocker.notify_all();
-                thread.join();
-            }
-        }
-    }
-};
+typedef std::function<void()> task_type;
 
 class ethread{
-    std::thread t;
-    std::mutex wake;
-    std::unique_lock<std::mutex> unique_wake;
+    int work_id;  // 当前对象id 未指定为-1
 
-    inline thread_local static
+    std::thread t;  // 管理的线程
+    mutable std::binary_semaphore blocker;  // 信号量 用于挂起和释放线程
 
-public:
-    template<typename F, typename ...Args>
-    ehtread(F &&f, Args &&...args)
-        : t(std::forward<F>(f), std::forward<Args>(args)...),
-        wake(), unique_wake(wake) {}
+    threadsafe_deque<task_type> works;  // 任务队列
 
-    void join() {t.join();}
+    bool busy;  // 是否正在执行任务
+    std::atomic_bool finish;  // 结束标志
 
-    bool joinable() {return t.joinable();}
-
-
-}
-
-class thread_pool{
-    typedef std::function<void()> task_type;
-    typedef std::unique_lock<std::mutex> unique_lock;
-
-    std::atomic_bool done;
-    std::atomic_uint max_size;   // 最大线程数量
-    std::atomic_uint min_size;
-
-    std::condition_variable thread_blocker; // 条件变量 用于唤醒线程
-    std::mutex condition_lock;  // 条件变量内的锁
-    unique_lock condition; // 条件变量内的锁
-
-    unsigned handler_id;  // 负责调度的线程的id
-    std::vector<std::thread> threads;   // 所有线程
-    std::vector<unsigned> work_ids; // 线程id列表
-    threadsafe_deque<task_type> pool_work_que;  // 公共任务队列
-
-    std::vector<threadsafe_deque<task_type>> thread_work_deques;
-    inline thread_local static threadsafe_deque<task_type> *thread_work_que= nullptr;
-    inline thread_local static unsigned work_id=0;
-
-    join_threads joiner;
-
-    inline bool judge(){
-        bool t = done.load() || !thread_work_que->empty();
-        return t;
-    }
-
-    void thread_worker(unsigned id){
-        std::mutex self_lock;
-        unique_lock self_u(self_lock);
-        work_id = id;
-        thread_work_que = &thread_work_deques[work_id];
-        while(!done){
+    void work(){
+        while (!finish){
             task_type task;
-            if(thread_work_que->pop_front(task)) {
-                spdlog::info("work on {}", work_id);
+            if(works.pop_front(task)){
+                busy = (true);
+                spdlog::info("ethread {} start working", work_id);
                 task();
-                spdlog::info("done work on {}", work_id);
+                busy = (false);
+                spdlog::info("ethread {} work done", work_id);
             }
-            else if(done){
+            else if(finish){
                 continue;
             }
-            else {
-                spdlog::info("wait on {}", work_id);
-                thread_blocker.wait(self_u, [this] { return judge(); });
-                spdlog::info("thread {} wake", work_id);
-            }
-        }
-    }
-
-    void thread_handler(unsigned id){
-        work_id = id;
-        while(!done){
-            task_type task;
-            if(pool_work_que.pop_front(task)){
-                unsigned index = MAXUINT;
-                int size = INT_MAX;
-                auto v_size = thread_work_deques.size();
-                for (unsigned i = 1; i < v_size; ++i){
-                    int tmp = thread_work_deques[i].size();
-                    if (tmp < size){
-                        size = tmp;
-                        index = i;
-                    }
-                }
-                if(index != MAXUINT){
-                    spdlog::info("push task {}", index);
-                    thread_work_deques[index].push_back(std::move(task));
-                    thread_blocker.notify_all();
-                }
-                else{
-                    return;
-                    std::this_thread::yield();
-                }
+            else{
+                spdlog::info("ethread {} sleep", work_id);
+                blocker.acquire();
+                spdlog::info("ethread {} wake", work_id);
             }
         }
     }
 
 public:
-    explicit thread_pool(unsigned min_size_ = 10):
-            done(false),
-            max_size(std::thread::hardware_concurrency()), min_size(std::min(max_size.load(), min_size_ + 1)),
-            thread_blocker(),
-            condition_lock(), condition(condition_lock),
-            thread_work_deques(min_size),
-            joiner(threads, thread_blocker){
+    explicit ethread(int id = -1)
+        : work_id(id), t(), blocker(0), busy(false), finish(false) {
+        start();
+        spdlog::info("ethread {} created", work_id);
+    }
 
-        handler_id = 0;
-        threads.emplace_back(&thread_pool::thread_handler, this, handler_id);
-        work_ids.emplace_back(handler_id);
-        for (unsigned i = 1; i < min_size; ++i){
-            threads.emplace_back(&thread_pool::thread_worker, this, i);
-            work_ids.emplace_back(i);
+    ~ethread() noexcept{
+        finish = true;
+        wake_up();
+        if (t.joinable()) {
+            t.join();
         }
+        spdlog::info("ethread {} deleted", work_id);
+    }
+    inline void start(){
+        t = std::thread(&ethread::work, this);
+    }
+
+    template<typename F, typename ... Args>
+    auto submit(F &&f, Args &&...args) -> std::future<typename std::invoke_result_t<F, Args...>>{
+        typedef std::invoke_result_t<F, Args...> result_tpye;
+        std::function<result_tpye()> row = [&]{return std::forward<F>(f)(std::forward<Args>(args)...);};
+        auto task = std::make_shared<std::packaged_task<result_tpye()>>(std::move(row));
+        auto res = task->get_future();
+        works.push_back(std::move([task]{(*task)();}));
+        wake_up();
+        return res;
+    }
+
+    void push_task(task_type task){
+        spdlog::info("ethread {} get task", work_id);
+        works.push_back(std::move(task));
+        wake_up();
+    }
+
+    bool steal_task(task_type &task){
+        spdlog::info("ethread {} steal task");
+        return works.pop_back(task);
+    }
+
+    inline bool sleep() const {return blocker.try_acquire();}
+
+    inline void wake_up() const {blocker.release();}
+
+    inline bool isbusy() const {return busy;}
+
+    inline int task_num() const {return busy + works.size();}
+
+    bool operator<(const ethread &other) const {return this->task_num() < other.task_num();}
+
+    ethread(ethread&&)=delete;
+    ethread& operator=(ethread&&)=delete;
+    ethread(const ethread&)=delete;
+    ethread& operator=(const ethread&)=delete;
+};
+
+class thread_pool{
+    std::atomic_int max_size;   // 最大线程数量
+    std::atomic_int min_size;
+    std::atomic_bool finish;
+
+    std::thread thread_handler;
+
+    std::vector<std::shared_ptr<ethread>> workers;
+    threadsafe_deque<task_type> pool_work_que;  // 公共任务队列
+
+    void handler(){
+        while (!finish){
+            task_type task;
+            if(pool_work_que.pop_front(task)) {
+                auto min_t = workers.at(0);
+                for(auto &e : workers){
+                    auto i = e->task_num();
+                    auto j = min_t->task_num();
+                    if (i < j)
+                        min_t = e;
+                }
+                min_t->push_task(task);
+            }
+            else{
+                continue;
+                std::shared_ptr<ethread> max_task;
+                std::shared_ptr<ethread> min_task;
+                int size = 0;
+                for (auto &e : workers){
+                    if (!e) continue;
+                    if (max_task < e)
+                        max_task = e;
+                    if (!(min_task < e))
+                        min_task = e;
+                    size += e->task_num();
+                }
+                if (max_task && min_task &&
+                        max_task->task_num() * workers.size()> size + 2 * workers.size()){
+                    max_task->steal_task(task);
+                    min_task->push_task(task);
+                }
+            }
+            std::this_thread::yield();
+        }
+    }
+
+public:
+    explicit thread_pool(int min_size_ = 10):
+            max_size((int)std::thread::hardware_concurrency()),     // unsigned => int
+            min_size(std::min(max_size.load(), min_size_ + 1)),
+            finish(false),
+            thread_handler(&thread_pool::handler, this)
+        {
+        for(int i = 1; i < min_size; ++i){
+            workers.emplace_back(std::make_shared<ethread>(i));
+        }
+
     }
 
     ~thread_pool(){
-        done = true;
-        condition_lock.unlock();
-        thread_blocker.notify_all();
+        finish = true;
+        if (thread_handler.joinable())
+            thread_handler.join();
     }
 
     template<typename Func, typename ...Args>
@@ -163,7 +178,6 @@ public:
         auto task = std::make_shared<std::packaged_task<result_type()>>(std::move(row));
         auto res = task->get_future();
         pool_work_que.push_back(std::move([task]{(*task)();}));
-        thread_blocker.notify_all();
         return res;
     }
 };

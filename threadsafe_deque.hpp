@@ -144,9 +144,9 @@ public:
     }
 
     int size() const {
-        unique_lock_t lk_head(head_mutex, std::defer_lock);
-        unique_lock_t lk_tail(tail_mutex, std::defer_lock);
-        std::lock(lk_head, lk_tail);
+        std::scoped_lock<std::mutex, std::mutex> lk(head_mutex, tail_mutex);
+//        lock_guard_t h(head_mutex);
+//        lock_guard_t t(tail_mutex);
         if (head > tail){
             return true_tail - head + 1 + tail - true_head;
         }

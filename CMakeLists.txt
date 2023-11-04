@@ -1,8 +1,15 @@
 cmake_minimum_required(VERSION 3.15)
 PROJECT(ForkJoinPool VERSION 1.0.0)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(fmt REQUIRED PATHS ${PROJECT_SOURCE_DIR}/Module)
+find_package(spdlog REQUIRED PATHS ${PROJECT_SOURCE_DIR}/Module)
+
+if (fmt_FOUND)
+    message( "fmt_FOUND")
+endif (fmt_FOUND)
 
 SET(CMAKE_C_COMPILER "D:/CppQt/Tools/mingw1120_64/bin/gcc.exe")
 SET(CMAKE_CXX_COMPILER "D:/CppQt/Tools/mingw1120_64/bin/g++.exe")
@@ -13,8 +20,6 @@ SET(CMAKE_BUILD_TYPE "Debug") # Debug模式 选项: Release Debug MinSizeRel Rel
 set(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g -ggdb")
 set(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall")
 
-INCLUDE_DIRECTORIES(${PROJECT_SOURCE_DIR}/Module/spdlog_debug/include)
-link_directories(${PROJECT_SOURCE_DIR}/Module/spdlog_debug/bin)
 
 file(GLOB src_files ${PROJECT_SOURCE_DIR}/*.cpp)
 file(GLOB inc_files ${PROJECT_SOURCE_DIR}/*.h)
@@ -27,6 +32,5 @@ add_executable(
         ${hpp_files}
 )
 
-target_link_libraries(${PROJECT_NAME} PUBLIC
-        spdlogd.dll
-)
+target_link_libraries(${PROJECT_NAME} PUBLIC spdlog::spdlog fmt::fmt)
+target_compile_definitions(${PROJECT_NAME} PUBLIC SPDLOG_FMT_EXTERNAL)
