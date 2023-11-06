@@ -43,30 +43,35 @@ public:
 };
 
 void test1(){
-    thread_pool p(10);
+    thread_pool p(3);
     this_thread::sleep_for(chrono::seconds(1));
     auto t1 = chrono::high_resolution_clock::now();
     vector<future<void>> res;
     res.emplace_back(p.submit(fun1));
     res.emplace_back(p.submit(fun1));
-    res.emplace_back(p.submit(fun1));
-    res.emplace_back(p.submit(fun1));
     res.emplace_back(p.submit(fun2));
     res.emplace_back(p.submit(fun2));
     res.emplace_back(p.submit(fun2));
     res.emplace_back(p.submit(fun2));
-    for(auto &tmp : res){
-        while(!tmp.valid());
-        tmp.get();
-    }
+    res.emplace_back(p.submit(fun2));
+    res.emplace_back(p.submit(fun2));
+    res.emplace_back(p.submit(fun2));
+    res.emplace_back(p.submit(fun2));
+    res.emplace_back(p.submit(fun2));
+    res.emplace_back(p.submit(fun2));
+    p.wait_all();
+//    for(auto &tmp : res){
+//        while(!tmp.valid());
+//        tmp.get();
+//    }
     auto t2 = chrono::high_resolution_clock::now();
     auto d1 = chrono::duration_cast<chrono::milliseconds>(t2 - t1).count();
     spdlog::info(d1);
     auto t3 = chrono::high_resolution_clock::now();
     fun1();
     fun1();
-    fun1();
-    fun1();
+    fun2();
+    fun2();
     fun2();
     fun2();
     fun2();
@@ -116,6 +121,8 @@ void fun1(){
 //        a.push_front(v1[i]);
             v1[i] = 0;
     }
+    this_thread::sleep_for(chrono::seconds (5));
+    spdlog::info("task1 comp");
 }
 
 void fun2(){
@@ -123,6 +130,7 @@ void fun2(){
 //        a.push_back(v1[i]);
             v1[i] = 0;
     }
+    spdlog::info("task2 comp");
 }
 
 void fun3(){

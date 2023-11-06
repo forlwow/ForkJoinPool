@@ -36,7 +36,12 @@ private:
         auto _new_true_head = generator.allocate(new_size);
         // 转移数据
         if(head < tail) {
-            std::uninitialized_copy_n(true_head, max_size.load(), _new_true_head);
+            try {
+                std::uninitialized_move_n(true_head, max_size.load(), _new_true_head);
+            }
+            catch (...){
+                throw std::bad_alloc();
+            }
             head = _new_true_head + (head - old_true_head);
             tail = _new_true_head + (tail - old_true_head);
             true_head = _new_true_head;
@@ -118,9 +123,9 @@ public:
     void push_back(T data){
         unique_lock_t lk_head(head_mutex);
         lock_guard_t lk_tail(tail_mutex);
-        ++tail;
         if (tail + 1 == head || tail + 1 - max_size == head)
             resize_with_out_lock();
+        ++tail;
         lk_head.unlock();
 
         alloc_type::construct(generator, tail-1,  std::move(data));
@@ -145,8 +150,6 @@ public:
 
     int size() const {
         std::scoped_lock<std::mutex, std::mutex> lk(head_mutex, tail_mutex);
-//        lock_guard_t h(head_mutex);
-//        lock_guard_t t(tail_mutex);
         if (head > tail){
             return true_tail - head + 1 + tail - true_head;
         }

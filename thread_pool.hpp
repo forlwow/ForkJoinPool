@@ -51,7 +51,8 @@ class ethread{
 
 public:
     explicit ethread(int id = -1)
-        : work_id(id), t(), blocker(0), busy(false), finish(false) {
+        : work_id(id), t(), blocker(0), works(),
+        busy(false), finish(false) {
         start();
         spdlog::info("ethread {} created", work_id);
     }
@@ -86,7 +87,7 @@ public:
     }
 
     bool steal_task(task_type &task){
-        spdlog::info("ethread {} steal task");
+        spdlog::info("ethread {} was stolen task", work_id);
         return works.pop_back(task);
     }
 
@@ -96,7 +97,9 @@ public:
 
     inline bool isbusy() const {return busy;}
 
-    inline int task_num() const {return busy + works.size();}
+     int task_num() const {return busy + works.size();}
+
+    inline int get_work_id() const {return work_id;}
 
     bool operator<(const ethread &other) const {return this->task_num() < other.task_num();}
 
@@ -130,22 +133,24 @@ class thread_pool{
                 min_t->push_task(task);
             }
             else{
-                continue;
-                std::shared_ptr<ethread> max_task;
-                std::shared_ptr<ethread> min_task;
                 int size = 0;
+                std::shared_ptr<ethread> max_task = workers[0];
+                std::shared_ptr<ethread> min_task = workers[0];
                 for (auto &e : workers){
                     if (!e) continue;
-                    if (max_task < e)
+                    if (max_task->task_num() < e->task_num())
                         max_task = e;
-                    if (!(min_task < e))
+                    else if (min_task->task_num() >= e->task_num())
                         min_task = e;
                     size += e->task_num();
                 }
-                if (max_task && min_task &&
-                        max_task->task_num() * workers.size()> size + 2 * workers.size()){
+                if (max_task.get() != min_task.get() &&
+                        max_task->task_num() * workers.size()> size + workers.size()){
                     max_task->steal_task(task);
-                    min_task->push_task(task);
+                    if(task) {
+                        min_task->push_task(task);
+                        spdlog::info("work from {} to {}", max_task->get_work_id(), min_task->get_work_id());
+                    }
                 }
             }
             std::this_thread::yield();
@@ -155,20 +160,21 @@ class thread_pool{
 public:
     explicit thread_pool(int min_size_ = 10):
             max_size((int)std::thread::hardware_concurrency()),     // unsigned => int
-            min_size(std::min(max_size.load(), min_size_ + 1)),
-            finish(false),
-            thread_handler(&thread_pool::handler, this)
+            min_size(std::min(max_size.load(), std::max(min_size_ + 1, 0))),
+            finish(false)
         {
         for(int i = 1; i < min_size; ++i){
             workers.emplace_back(std::make_shared<ethread>(i));
         }
-
+        // 构建完工作线程再构建调度线程
+        thread_handler = std::thread(&thread_pool::handler, this);
     }
 
     ~thread_pool(){
         finish = true;
         if (thread_handler.joinable())
             thread_handler.join();
+        spdlog::info("thread pool delete");
     }
 
     template<typename Func, typename ...Args>
@@ -177,8 +183,23 @@ public:
         std::function<result_type()> row = [&]{return std::forward<Func>(f)(std::forward<Args>(args)...);};
         auto task = std::make_shared<std::packaged_task<result_type()>>(std::move(row));
         auto res = task->get_future();
-        pool_work_que.push_back(std::move([task]{(*task)();}));
+        pool_work_que.push_back(([task]{(*task)();}));
         return res;
+    }
+
+    void wait_all(){
+        unsigned flag = 0;
+        for (auto i = 0; i < workers.size(); ++i){
+            flag |= 1 << i;
+        }
+        while (flag || !pool_work_que.empty()){
+            for (auto i = 0; i < workers.size(); ++i){
+                if (workers[i]->task_num())
+                    flag |= 1 << i;
+                else
+                    flag &= ~(1 << i);
+            }
+        }
     }
 };
 
