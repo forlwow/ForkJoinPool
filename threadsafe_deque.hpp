@@ -48,8 +48,8 @@ private:
             true_tail = _new_true_head + (new_size - 1);
         }
         else{
-            std::uninitialized_copy_n(true_head, tail - true_head, _new_true_head);
-            std::uninitialized_copy_n(head, true_tail - head + 1, _new_true_head + new_size - (true_tail - head) - 1);
+            std::uninitialized_move_n(true_head, tail - true_head, _new_true_head);
+            std::uninitialized_move_n(head, true_tail - head + 1, _new_true_head + new_size - (true_tail - head) - 1);
             head = _new_true_head + new_size - (true_tail - head) - 1;
             tail = _new_true_head + (tail - true_head);
             true_head = _new_true_head;
