@@ -1,18 +1,25 @@
 cmake_minimum_required(VERSION 3.15)
 PROJECT(ForkJoinPool VERSION 1.0.0)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(fmt REQUIRED PATHS ${PROJECT_SOURCE_DIR}/Module)
-find_package(spdlog REQUIRED PATHS ${PROJECT_SOURCE_DIR}/Module)
 
-if (fmt_FOUND)
-    message( "fmt_FOUND")
-endif (fmt_FOUND)
+if (WIN32)
+    find_package(fmt REQUIRED PATHS ${PROJECT_SOURCE_DIR}/Module/Windows NO_DEFAULT_PATH)
+    find_package(spdlog REQUIRED PATHS ${PROJECT_SOURCE_DIR}/Module/Windows NO_DEFAULT_PATH)
 
-SET(CMAKE_C_COMPILER "D:/CppQt/Tools/mingw1120_64/bin/gcc.exe")
-SET(CMAKE_CXX_COMPILER "D:/CppQt/Tools/mingw1120_64/bin/g++.exe")
+elseif (UNIX)
+    find_package(fmt REQUIRED PATHS ${PROJECT_SOURCE_DIR}/Module/Linux NO_DEFAULT_PATH)
+    find_package(spdlog REQUIRED PATHS ${PROJECT_SOURCE_DIR}/Module/Linux NO_DEFAULT_PATH)
+endif ()
+
+find_package(Threads REQUIRED)
+
+if(WIN32)
+    SET(CMAKE_C_COMPILER "D:/CppQt/Tools/mingw1120_64/bin/gcc.exe")
+    SET(CMAKE_CXX_COMPILER "D:/CppQt/Tools/mingw1120_64/bin/g++.exe")
+endif ()
 SET(EXECUTABLE_OUTPUT_PATH "${PROJECT_SOURCE_DIR}/bin")
 SET(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin")
 SET(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin")
@@ -34,3 +41,5 @@ add_executable(
 
 target_link_libraries(${PROJECT_NAME} PUBLIC spdlog::spdlog fmt::fmt)
 target_compile_definitions(${PROJECT_NAME} PUBLIC SPDLOG_FMT_EXTERNAL)
+
+target_link_libraries(${PROJECT_NAME} PUBLIC Threads::Threads)

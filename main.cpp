@@ -43,7 +43,7 @@ public:
 };
 
 void test1(){
-    thread_pool p(3);
+    thread_pool p(3, true);
     this_thread::sleep_for(chrono::seconds(1));
     auto t1 = chrono::high_resolution_clock::now();
     vector<future<void>> res;
@@ -56,14 +56,7 @@ void test1(){
     res.emplace_back(p.submit(fun2));
     res.emplace_back(p.submit(fun2));
     res.emplace_back(p.submit(fun2));
-    res.emplace_back(p.submit(fun2));
-    res.emplace_back(p.submit(fun2));
-    res.emplace_back(p.submit(fun2));
     p.wait_all();
-//    for(auto &tmp : res){
-//        while(!tmp.valid());
-//        tmp.get();
-//    }
     auto t2 = chrono::high_resolution_clock::now();
     auto d1 = chrono::duration_cast<chrono::milliseconds>(t2 - t1).count();
     spdlog::info(d1);
@@ -93,7 +86,7 @@ void test2(){
     }
     auto tmp = [&](){
         for (auto &i : v){
-            auto tt = i->task_num();
+            i->task_num();
         }
     };
 
@@ -121,7 +114,7 @@ void fun1(){
 //        a.push_front(v1[i]);
             v1[i] = 0;
     }
-    this_thread::sleep_for(chrono::seconds (5));
+    this_thread::sleep_for(chrono::seconds (1));
     spdlog::info("task1 comp");
 }
 

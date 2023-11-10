@@ -36,12 +36,7 @@ private:
         auto _new_true_head = generator.allocate(new_size);
         // 转移数据
         if(head < tail) {
-            try {
-                std::uninitialized_move_n(true_head, max_size.load(), _new_true_head);
-            }
-            catch (...){
-                throw std::bad_alloc();
-            }
+            std::uninitialized_move_n(true_head, max_size.load(), _new_true_head);
             head = _new_true_head + (head - old_true_head);
             tail = _new_true_head + (tail - old_true_head);
             true_head = _new_true_head;
