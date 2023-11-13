@@ -37,10 +37,10 @@ class ethread{
 
     inline void do_task(task_type &task){
         busy = (true);
-        spdlog::info("ethread {} start working", work_id);
+        spdlog::debug("ethread {} start working", work_id);
         task();
         busy = (false);
-        spdlog::info("ethread {} work done", work_id);
+        spdlog::debug("ethread {} work done", work_id);
     }
 
     void work(){
@@ -55,10 +55,10 @@ class ethread{
             else{
                 if (lite) std::this_thread::yield();
                 else {
-                    spdlog::info("ethread {} sleep", work_id);
+                    spdlog::debug("ethread {} sleep", work_id);
                     std::unique_lock lk(wait_lock);
                     block.wait(lk);
-                    spdlog::info("ethread {} wake", work_id);
+                    spdlog::debug("ethread {} wake", work_id);
                 }
             }
         }
@@ -68,7 +68,7 @@ public:
     explicit ethread(int id = -1, bool lite_ = false)
         : work_id(id), lite(lite_), t(), wait_lock(), block(), works(),
         busy(false), finish(false), get_task(nullptr) {
-        spdlog::info("ethread {} created", work_id);
+        spdlog::debug("ethread {} created", work_id);
     }
 
     ~ethread() noexcept{
@@ -77,13 +77,13 @@ public:
         if (t.joinable()) {
             t.join();
         }
-        spdlog::info("ethread {} deleted", work_id);
+        spdlog::debug("ethread {} deleted", work_id);
     }
     inline void start(){
         t = std::thread(&ethread::work, this);
     }
 
-    void set_callback(std::function<bool(ethread *, task_type &taskType)> call_back){
+    inline void set_callback(std::function<bool(ethread *, task_type &taskType)> call_back){
         get_task = std::move(call_back);
     }
 
@@ -99,13 +99,13 @@ public:
     }
 
     void push_task(task_type task){
-        spdlog::info("ethread {} get task", work_id);
+        spdlog::debug("ethread {} get task", work_id);
         works.push_back(std::move(task));
         wake_up();
     }
 
     bool steal_task(task_type &task){
-        spdlog::info("ethread {} was stolen task", work_id);
+        spdlog::debug("ethread {} was stolen task", work_id);
         return works.pop_back(task);
     }
 
@@ -113,11 +113,9 @@ public:
 
     inline bool isbusy() const {return busy;}
 
-     int task_num() const {return busy + works.size();}
+    int task_num() const {return isbusy() + works.size();}
 
     inline int get_work_id() const {return work_id;}
-
-    bool operator<(const ethread &other) const {return this->task_num() < other.task_num();}
 
     ethread(ethread&&)=delete;
     ethread& operator=(ethread&&)=delete;
@@ -167,7 +165,7 @@ class thread_pool{
                     max_task->steal_task(task);
                     if(task) {
                         min_task->push_task(task);
-                        spdlog::info("work from {} to {}", max_task->get_work_id(), min_task->get_work_id());
+                        spdlog::debug("work from {} to {}", max_task->get_work_id(), min_task->get_work_id());
                     }
                 }
             }
@@ -175,11 +173,11 @@ class thread_pool{
         }
     }
 
-    bool pop_from_pool(task_type &task){
+    inline bool pop_from_pool(task_type &task){
         return pool_work_que.pop_front(task);
     }
 
-    bool steal_task(task_type &task, unsigned id = 0){
+    inline bool steal_task(task_type &task, unsigned id = 0){
         for (unsigned i = 0; i < workers.size(); ++i){
             unsigned index = (id + i + 1) % workers.size();
             if(workers[index]->works.pop_back(task))
@@ -225,7 +223,7 @@ public:
         finish = true;
         if (!lite && thread_handler.joinable())
             thread_handler.join();
-        spdlog::info("thread pool delete");
+        spdlog::debug("thread pool delete");
     }
 
     template<typename Func, typename ...Args>

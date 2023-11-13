@@ -106,6 +106,7 @@ void test3(){
 }
 
 int main(){
+    spdlog::set_level(spdlog::level::debug);
     test1();
 }
 
