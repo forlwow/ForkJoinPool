@@ -141,7 +141,3 @@ int fun4(int j){
     return j;
 }
 
-void fun5(int &&p){
-    cout << &p << endl;
-}
-
